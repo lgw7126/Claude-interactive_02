@@ -119,8 +119,9 @@ float fbm(vec2 p) {
 
 /* 부드러운 능선 + 미세한 숲 질감 (삼각형 없이) */
 float ridgeline(float x, float seed, float canopy) {
-  float h = fbm(vec2(x * 0.85 + seed * 7.3, seed * 3.1));
-  h += fbm(vec2(x * 7.0 + seed * 13.0, seed * 5.7)) * 0.045 * canopy;
+  float h = fbm(vec2(x * 0.65 + seed * 7.3, seed * 3.1)) * 0.72;
+  h += fbm(vec2(x * 2.3 + seed * 11.0, seed * 1.9)) * 0.28;
+  h += fbm(vec2(x * 8.0 + seed * 13.0, seed * 5.7)) * 0.05 * canopy;
   return h;
 }
 
@@ -141,8 +142,8 @@ void main() {
   float horizon = 0.34;
   vec3 nightTop = vec3(0.016, 0.030, 0.052);
   vec3 nightLow = vec3(0.045, 0.072, 0.102);
-  vec3 duskTop  = vec3(0.108, 0.150, 0.198);
-  vec3 duskLow  = vec3(0.360, 0.242, 0.190);
+  vec3 duskTop  = vec3(0.115, 0.160, 0.215);
+  vec3 duskLow  = vec3(0.560, 0.350, 0.230);
   vec3 sky = mix(
     mix(nightLow, nightTop, smoothstep(horizon - 0.1, 1.0, uv.y)),
     mix(duskLow,  duskTop,  smoothstep(horizon - 0.05, 1.0, uv.y)),
@@ -153,9 +154,9 @@ void main() {
   vec2 sun = vec2(0.5 * aspect, horizon + 0.015 + 0.045 * open);
   float sd = distance(p, sun);
   float sunGlow = exp(-sd * 1.5);
-  sky += vec3(1.00, 0.72, 0.44) * open * 0.50 * exp(-sd * sd * 26.0);
-  sky += vec3(0.92, 0.58, 0.34) * open * 0.26 * exp(-sd * 3.2);
-  sky += vec3(0.70, 0.40, 0.24) * open * 0.13 * exp(-sd * 1.1);
+  sky += vec3(1.00, 0.78, 0.50) * open * 0.90 * exp(-sd * sd * 18.0);
+  sky += vec3(1.00, 0.62, 0.36) * open * 0.45 * exp(-sd * 2.6);
+  sky += vec3(0.78, 0.46, 0.28) * open * 0.22 * exp(-sd * 1.0);
 
   /* 밤에도 지평선에 아주 희미한 온기 */
   sky += vec3(0.10, 0.08, 0.075) * exp(-abs(uv.y - horizon) * 7.0) * (0.22 + 0.78 * open);
@@ -172,25 +173,28 @@ void main() {
   /* 안개가 머금는 색 — 밤엔 청회색, 여명엔 태양빛 */
   vec3 hazeCol = mix(
     vec3(0.105, 0.150, 0.198),
-    mix(vec3(0.40, 0.33, 0.30), vec3(0.94, 0.66, 0.42), sunGlow),
+    mix(vec3(0.42, 0.36, 0.33), vec3(1.00, 0.72, 0.46), sunGlow),
     open
   );
 
-  /* ---------- 능선 6겹 (뒤 → 앞) — 깊이는 안개가 만든다 ---------- */
-  for (int i = 0; i < 6; i++) {
+  /* ---------- 능선 5겹 (뒤 → 앞) — 깊이는 안개가 만든다 ---------- */
+  for (int i = 0; i < 5; i++) {
     float fi = float(i);
-    float t = fi / 5.0;                              /* 0 = 가장 멀리 */
-    float base = mix(0.40, 0.045, t);
-    float amp  = mix(0.075, 0.15, t);
-    float freq = mix(1.0, 1.7, t);
+    float t = fi / 4.0;                              /* 0 = 가장 멀리 */
+    float base = mix(0.33, 0.015, t);
+    float amp  = mix(0.18, 0.23, t);
+    float freq = mix(0.55, 1.45, t);
     float h = base + amp * ridgeline(p.x * freq + fi * 23.0, fi * 4.7 + 2.0, t);
+    /* 태양 아래로 열리는 골짜기 — 여명이 계곡 사이로 쏟아진다 */
+    float dx = p.x - 0.5 * aspect;
+    h -= exp(-dx * dx * 3.2) * mix(0.10, 0.015, t);
     float m = smoothstep(h + 0.002, h - 0.002, uv.y);
 
-    vec3 lc = mix(vec3(0.075, 0.112, 0.148), vec3(0.010, 0.018, 0.028), t);
+    vec3 lc = mix(vec3(0.088, 0.128, 0.165), vec3(0.007, 0.013, 0.022), t);
     /* 여명이 스치는 먼 능선의 온기 */
     lc += vec3(0.55, 0.30, 0.16) * open * exp(-sd * 2.4) * (1.0 - t) * 0.30;
     /* 대기 원근 — 멀수록 하늘/안개에 잠긴다 */
-    float haze = pow(1.0 - t, 1.5) * mix(0.92, 0.72, open);
+    float haze = pow(1.0 - t, 1.8) * mix(0.88, 0.62, open);
     lc = mix(lc, hazeCol, haze);
     col = mix(col, lc, m);
 
@@ -200,7 +204,7 @@ void main() {
     float bn = fbm(vec2(bp.x * 2.1 + uTime * 0.020 * (0.5 + t),
                         bp.y * 3.2 - uTime * 0.024));
     float bm = band * smoothstep(0.36, 0.72, bn)
-             * mix(0.50, 0.22, t) * mix(1.0, 0.42, open);
+             * mix(0.34, 0.14, t) * mix(1.0, 0.42, open);
     bm *= 1.0 - 0.90 * part;
     col = mix(col, hazeCol, clamp(bm, 0.0, 1.0));
   }
@@ -219,6 +223,9 @@ void main() {
   mist *= 1.0 - 0.93 * part;
   col = mix(col, hazeCol, mist * 0.52);
 
+  /* 안개 속으로 번지는 여명의 산란광 */
+  col += vec3(1.0, 0.64, 0.36) * open * exp(-sd * 1.9) * (mist * 0.55 + 0.10);
+
   /* ---------- 아주 작은 부유 입자 — 티끌처럼 ---------- */
   for (int i = 0; i < 6; i++) {
     float fi = float(i);
@@ -236,6 +243,7 @@ void main() {
   /* ---------- 톤 정리 ---------- */
   float vig = smoothstep(1.45, 0.42, distance(uv, vec2(0.5, 0.46)));
   col *= mix(0.80, 1.0, vig);
+  col *= mix(1.0, 1.12, open);                            /* 아침의 노출 상승 */
   col = mix(col, col * col * (3.0 - 2.0 * col), 0.30);   /* 부드러운 대비 */
   col = pow(max(col, 0.0), vec3(0.94));
   col += (hash21(uv * uRes + fract(uTime) * 7.0) - 0.5) * 0.014;  /* 필름 그레인 */
