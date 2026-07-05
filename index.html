@@ -244,6 +244,7 @@ void main() {
   float vig = smoothstep(1.45, 0.42, distance(uv, vec2(0.5, 0.46)));
   col *= mix(0.80, 1.0, vig);
   col *= mix(1.0, 1.12, open);                            /* 아침의 노출 상승 */
+  col = 1.0 - exp(-col * 1.6);                            /* 필름식 톤매핑 — 밝은 곳이 부드럽게 타오름 */
   col = mix(col, col * col * (3.0 - 2.0 * col), 0.30);   /* 부드러운 대비 */
   col = pow(max(col, 0.0), vec3(0.94));
   col += (hash21(uv * uRes + fract(uTime) * 7.0) - 0.5) * 0.014;  /* 필름 그레인 */
