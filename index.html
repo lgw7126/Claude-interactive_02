@@ -4,57 +4,59 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>새벽, 숲 — 손끝으로 깨우는 아침</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@200;300&display=swap" rel="stylesheet">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { width: 100%; height: 100%; overflow: hidden; background: #04090b; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #060b12; }
   #gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
 
   /* ── 타이틀 오버레이 ─────────────────────────── */
   .overlay {
     position: fixed; inset: 0; display: flex; flex-direction: column;
     align-items: center; justify-content: center; pointer-events: none;
-    color: #e8e2d6; text-align: center; z-index: 10;
+    color: #ddd6c8; text-align: center; z-index: 10;
+    transform: translateY(-6vh);
   }
   h1 {
-    font-family: 'Noto Serif KR', Georgia, serif; font-weight: 300;
-    font-size: clamp(2.2rem, 6vw, 4.5rem);
-    letter-spacing: 0.35em; text-indent: 0.35em;
-    opacity: 0.55;
-    text-shadow: 0 0 30px rgba(255, 200, 140, 0);
-    transition: none; /* JS가 매 프레임 제어 */
+    font-family: 'Noto Serif KR', Georgia, serif; font-weight: 200;
+    font-size: clamp(1.7rem, 4.2vw, 3.2rem);
+    letter-spacing: 0.55em; text-indent: 0.55em;
+    opacity: 0.5;
   }
   .sub {
-    margin-top: 1.2rem; font-family: 'Noto Serif KR', Georgia, serif;
-    font-size: clamp(0.8rem, 1.6vw, 1rem); letter-spacing: 0.45em; text-indent: 0.45em;
-    opacity: 0.35; font-weight: 300;
+    margin-top: 1.4rem; font-family: 'Noto Serif KR', Georgia, serif;
+    font-size: clamp(0.68rem, 1.2vw, 0.85rem); letter-spacing: 0.5em; text-indent: 0.5em;
+    opacity: 0.3; font-weight: 200;
   }
 
   /* ── 상태 칩 & 힌트 ─────────────────────────── */
   .chip {
-    position: fixed; top: 1.2rem; left: 50%; transform: translateX(-50%);
-    padding: 0.45rem 1.1rem; border-radius: 999px; z-index: 20;
-    background: rgba(10, 20, 24, 0.55); backdrop-filter: blur(8px);
-    border: 1px solid rgba(232, 226, 214, 0.12);
-    color: rgba(232, 226, 214, 0.75);
-    font-family: system-ui, sans-serif; font-size: 0.78rem; letter-spacing: 0.05em;
-    transition: opacity 0.6s;
+    position: fixed; top: 1.4rem; left: 50%; transform: translateX(-50%);
+    padding: 0.4rem 1.2rem; border-radius: 999px; z-index: 20;
+    background: rgba(8, 14, 20, 0.4); backdrop-filter: blur(10px);
+    border: 1px solid rgba(221, 214, 200, 0.08);
+    color: rgba(221, 214, 200, 0.6);
+    font-family: 'Noto Serif KR', serif; font-size: 0.74rem; letter-spacing: 0.12em;
+    transition: opacity 0.8s;
   }
   .hint {
-    position: fixed; bottom: 1.4rem; left: 50%; transform: translateX(-50%);
-    color: rgba(232, 226, 214, 0.45); z-index: 20;
-    font-family: system-ui, sans-serif; font-size: 0.75rem; letter-spacing: 0.08em;
-    text-align: center; line-height: 1.7;
-    transition: opacity 1s;
+    position: fixed; bottom: 1.6rem; left: 50%; transform: translateX(-50%);
+    color: rgba(221, 214, 200, 0.35); z-index: 20;
+    font-family: 'Noto Serif KR', serif; font-size: 0.72rem; letter-spacing: 0.14em;
+    text-align: center; line-height: 2;
+    transition: opacity 1.2s;
   }
 
   /* ── 웹캠 미리보기 ─────────────────────────── */
   #cam {
-    position: fixed; right: 1rem; bottom: 1rem; width: 130px; z-index: 20;
-    border-radius: 10px; transform: scaleX(-1);
-    opacity: 0.5; border: 1px solid rgba(232,226,214,0.15);
+    position: fixed; right: 1.2rem; bottom: 1.2rem; width: 110px; z-index: 20;
+    border-radius: 8px; transform: scaleX(-1);
+    opacity: 0.35; border: 1px solid rgba(221,214,200,0.1);
     transition: opacity 0.3s;
   }
-  #cam:hover { opacity: 0.9; }
+  #cam:hover { opacity: 0.85; }
   #cam.hidden { display: none; }
 </style>
 </head>
@@ -75,7 +77,7 @@
 
 <script type="module">
 /* ============================================================
-   1. WebGL — 새벽숲 + 볼류메트릭 안개 실시간 렌더링
+   1. WebGL — 안개 낀 새벽 능선, 실시간 렌더링
    ============================================================ */
 const canvas = document.getElementById('gl');
 const gl = canvas.getContext('webgl', { antialias: false });
@@ -93,39 +95,33 @@ uniform float uOpen;    // 손 펼침 0(주먹)~1(활짝)
 uniform vec2  uHand;    // 손 위치 (0~1, 좌하단 원점)
 uniform float uHandOn;  // 손 감지 여부 0~1
 
-/* ---------- noise ---------- */
-float hash11(float n) { return fract(sin(n) * 43758.5453123); }
-float hash21(vec2 p)  { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
+float hash21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
 
 float noise(vec2 p) {
   vec2 i = floor(p), f = fract(p);
   f = f * f * (3.0 - 2.0 * f);
-  float a = hash21(i);
-  float b = hash21(i + vec2(1.0, 0.0));
-  float c = hash21(i + vec2(0.0, 1.0));
-  float d = hash21(i + vec2(1.0, 1.0));
-  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+  return mix(
+    mix(hash21(i), hash21(i + vec2(1, 0)), f.x),
+    mix(hash21(i + vec2(0, 1)), hash21(i + vec2(1, 1)), f.x),
+    f.y
+  );
 }
 
 float fbm(vec2 p) {
   float v = 0.0, a = 0.5;
   for (int i = 0; i < 5; i++) {
     v += a * noise(p);
-    p = p * 2.03 + vec2(17.3, 9.1);
-    a *= 0.5;
+    p = p * 2.02 + vec2(31.7, 11.3);
+    a *= 0.52;
   }
   return v;
 }
 
-/* ---------- 침엽수 능선 ---------- */
-float treeline(float x, float seed) {
-  float t = x * 3.0 + seed;
-  float id = floor(t);
-  float f = fract(t);
-  float peak = 0.35 + 0.65 * hash11(id * 7.31 + seed);
-  float tri = (1.0 - abs(f * 2.0 - 1.0)) * peak;      // 뾰족한 나무 꼭대기
-  float n = fbm(vec2(x * 2.2, seed * 3.7)) * 0.55;    // 능선의 완만한 굴곡
-  return tri * 0.45 + n;
+/* 부드러운 능선 + 미세한 숲 질감 (삼각형 없이) */
+float ridgeline(float x, float seed, float canopy) {
+  float h = fbm(vec2(x * 0.85 + seed * 7.3, seed * 3.1));
+  h += fbm(vec2(x * 7.0 + seed * 13.0, seed * 5.7)) * 0.045 * canopy;
+  return h;
 }
 
 void main() {
@@ -133,125 +129,116 @@ void main() {
   float aspect = uRes.x / uRes.y;
   vec2 p  = vec2(uv.x * aspect, uv.y);
   vec2 hp = vec2(uHand.x * aspect, uHand.y);
-
   float open = uOpen;
 
   /* ---------- 손 주변 안개 갈라짐 ---------- */
   float hd   = distance(p, hp);
-  float part = uHandOn * smoothstep(0.42, 0.04, hd);
+  float part = uHandOn * smoothstep(0.40, 0.05, hd);
   vec2 pushDir = (hd > 0.001) ? (p - hp) / hd : vec2(0.0, 1.0);
-  vec2 fogPush = pushDir * part * 0.28;   // 안개 노이즈 좌표를 바깥으로 밀어냄
+  vec2 fogPush = pushDir * part * 0.22;
 
   /* ---------- 하늘 ---------- */
-  vec3 nightLo = vec3(0.015, 0.045, 0.060);
-  vec3 nightHi = vec3(0.040, 0.085, 0.110);
-  vec3 dawnLo  = vec3(0.58, 0.34, 0.16);
-  vec3 dawnHi  = vec3(0.10, 0.17, 0.22);
+  float horizon = 0.34;
+  vec3 nightTop = vec3(0.016, 0.030, 0.052);
+  vec3 nightLow = vec3(0.045, 0.072, 0.102);
+  vec3 duskTop  = vec3(0.108, 0.150, 0.198);
+  vec3 duskLow  = vec3(0.360, 0.242, 0.190);
   vec3 sky = mix(
-    mix(nightLo, nightHi, uv.y),
-    mix(dawnLo,  dawnHi,  smoothstep(0.0, 0.85, uv.y)),
+    mix(nightLow, nightTop, smoothstep(horizon - 0.1, 1.0, uv.y)),
+    mix(duskLow,  duskTop,  smoothstep(horizon - 0.05, 1.0, uv.y)),
     open
   );
 
-  /* 태양(여명) — 지평선 부근에서 떠오름 */
-  vec2 sun = vec2(0.5 * aspect, 0.24 + 0.06 * open);
+  /* 태양 — 부챗살 없이, 겹겹의 부드러운 글로우만 */
+  vec2 sun = vec2(0.5 * aspect, horizon + 0.015 + 0.045 * open);
   float sd = distance(p, sun);
-  sky += vec3(1.00, 0.70, 0.40) * open * 0.65 * exp(-sd * sd * 7.0);
-  sky += vec3(1.00, 0.84, 0.58) * open * 0.20 * exp(-sd * 2.0);
+  float sunGlow = exp(-sd * 1.5);
+  sky += vec3(1.00, 0.72, 0.44) * open * 0.50 * exp(-sd * sd * 26.0);
+  sky += vec3(0.92, 0.58, 0.34) * open * 0.26 * exp(-sd * 3.2);
+  sky += vec3(0.70, 0.40, 0.24) * open * 0.13 * exp(-sd * 1.1);
 
-  /* 별 — 어두울수록 또렷 */
-  float star = step(0.9985, hash21(floor(p * 220.0)));
-  star *= smoothstep(0.45, 0.85, uv.y) * (1.0 - open);
-  star *= 0.6 + 0.4 * sin(uTime * 2.0 + hash21(floor(p * 220.0)) * 40.0);
-  sky += vec3(0.8, 0.9, 1.0) * star * 0.5;
+  /* 밤에도 지평선에 아주 희미한 온기 */
+  sky += vec3(0.10, 0.08, 0.075) * exp(-abs(uv.y - horizon) * 7.0) * (0.22 + 0.78 * open);
+
+  /* 별 — 밤에만, 아주 조용히 */
+  vec2 sc = floor(p * 260.0);
+  float star = step(0.9988, hash21(sc));
+  star *= smoothstep(0.5, 0.9, uv.y) * (1.0 - open) * (1.0 - open);
+  star *= 0.4 + 0.6 * sin(uTime * 1.4 + hash21(sc + 7.0) * 40.0);
+  sky += vec3(0.75, 0.85, 1.0) * star * 0.30;
 
   vec3 col = sky;
 
-  /* ---------- 숲 실루엣 4겹 (뒤 → 앞) ---------- */
-  for (int i = 0; i < 4; i++) {
+  /* 안개가 머금는 색 — 밤엔 청회색, 여명엔 태양빛 */
+  vec3 hazeCol = mix(
+    vec3(0.105, 0.150, 0.198),
+    mix(vec3(0.40, 0.33, 0.30), vec3(0.94, 0.66, 0.42), sunGlow),
+    open
+  );
+
+  /* ---------- 능선 6겹 (뒤 → 앞) — 깊이는 안개가 만든다 ---------- */
+  for (int i = 0; i < 6; i++) {
     float fi = float(i);
-    float depth   = fi / 3.0;                         // 0 = 가장 멀리
-    float base    = mix(0.46, 0.10, depth);           // 능선 기준 높이
-    float amp     = mix(0.10, 0.22, depth);
-    float xscale  = mix(1.1, 2.4, depth);
-    float seed    = fi * 19.7 + 5.0;
-    float drift   = uTime * 0.004 * depth;            // 앞 숲만 미세하게 흔들림
+    float t = fi / 5.0;                              /* 0 = 가장 멀리 */
+    float base = mix(0.40, 0.045, t);
+    float amp  = mix(0.075, 0.15, t);
+    float freq = mix(1.0, 1.7, t);
+    float h = base + amp * ridgeline(p.x * freq + fi * 23.0, fi * 4.7 + 2.0, t);
+    float m = smoothstep(h + 0.002, h - 0.002, uv.y);
 
-    float h = base + amp * treeline(p.x * xscale + drift, seed);
-    float m = smoothstep(h + 0.003, h - 0.003, uv.y);
+    vec3 lc = mix(vec3(0.075, 0.112, 0.148), vec3(0.010, 0.018, 0.028), t);
+    /* 여명이 스치는 먼 능선의 온기 */
+    lc += vec3(0.55, 0.30, 0.16) * open * exp(-sd * 2.4) * (1.0 - t) * 0.30;
+    /* 대기 원근 — 멀수록 하늘/안개에 잠긴다 */
+    float haze = pow(1.0 - t, 1.5) * mix(0.92, 0.72, open);
+    lc = mix(lc, hazeCol, haze);
+    col = mix(col, lc, m);
 
-    /* 먼 숲은 대기에 묻히고, 가까운 숲은 짙은 실루엣 */
-    vec3 silCol = mix(vec3(0.012, 0.028, 0.030), vec3(0.006, 0.014, 0.016), depth);
-    /* 여명이 오면 먼 능선에 따뜻한 기운 */
-    silCol += vec3(0.30, 0.16, 0.06) * open * (1.0 - depth) * 0.35
-              * exp(-abs(uv.y - h) * 14.0);
-
-    /* 층 사이 대기 안개 (멀수록 짙게, 주먹 쥘수록 짙게) */
-    float atmo = (1.0 - depth) * mix(0.72, 0.28, open);
-    vec3 atmoCol = mix(vec3(0.16, 0.21, 0.24), vec3(0.72, 0.55, 0.38), open * 0.6);
-    silCol = mix(silCol, atmoCol, atmo);
-
-    col = mix(col, silCol, m);
+    /* 능선 위로 피어오르는 골안개 */
+    float band = exp(-max(0.0, uv.y - h) * mix(14.0, 26.0, t));
+    vec2 bp = p + fogPush;
+    float bn = fbm(vec2(bp.x * 2.1 + uTime * 0.020 * (0.5 + t),
+                        bp.y * 3.2 - uTime * 0.024));
+    float bm = band * smoothstep(0.36, 0.72, bn)
+             * mix(0.50, 0.22, t) * mix(1.0, 0.42, open);
+    bm *= 1.0 - 0.90 * part;
+    col = mix(col, hazeCol, clamp(bm, 0.0, 1.0));
   }
 
-  /* ---------- 피어오르는 볼류메트릭 안개 2겹 ---------- */
-  /* 손 위치에서는 노이즈 좌표가 밀려나 안개가 갈라진다 */
+  /* ---------- 도메인 워핑 안개 — 비단결처럼 흐르는 결 ---------- */
   vec2 fp = p + fogPush;
+  vec2 q = vec2(
+    fbm(fp * 1.35 + vec2(0.0, uTime * 0.013)),
+    fbm(fp * 1.35 + vec2(5.2, uTime * 0.017))
+  );
+  float mist = fbm(fp * vec2(1.5, 2.7) + q * 1.35
+                   + vec2(uTime * 0.022, -uTime * 0.030));
+  mist *= smoothstep(0.92, 0.06, uv.y);
+  float density = mix(0.92, 0.40, open);
+  mist = smoothstep(0.34, 0.92, mist * density + 0.10);
+  mist *= 1.0 - 0.93 * part;
+  col = mix(col, hazeCol, mist * 0.52);
 
-  float fogA = fbm(vec2(fp.x * 1.7 + uTime * 0.030, fp.y * 2.6 - uTime * 0.060));
-  float fogB = fbm(vec2(fp.x * 3.1 - uTime * 0.018, fp.y * 4.2 - uTime * 0.105));
-  float fog = fogA * 0.65 + fogB * 0.45;
-
-  /* 아래쪽이 짙은 수직 프로파일 */
-  float vprof = smoothstep(1.0, 0.05, uv.y);
-  fog *= vprof;
-
-  /* 주먹 = 자욱, 펼침 = 옅어지되 빛을 머금음 */
-  float density = mix(1.15, 0.45, open);
-  fog = smoothstep(0.25, 0.95, fog * density);
-
-  /* 손 주변은 안개가 걷힘 */
-  fog *= 1.0 - 0.92 * part;
-
-  /* 안개 색 — 밤에는 차가운 청회색, 여명에는 태양빛을 머금은 금빛 */
-  float sunGlow = exp(-sd * 1.6);
-  vec3 fogNight = vec3(0.30, 0.38, 0.44) * 0.55;
-  vec3 fogDawn  = mix(vec3(0.55, 0.58, 0.60), vec3(1.0, 0.80, 0.55), sunGlow);
-  vec3 fogCol = mix(fogNight, fogDawn, open);
-
-  col = mix(col, fogCol, fog * 0.85);
-
-  /* ---------- 갈라진 가장자리의 은은한 빛테두리 ---------- */
-  float rim = part * (1.0 - part) * 4.0;
-  col += vec3(0.45, 0.55, 0.60) * rim * 0.10 * (0.4 + 0.6 * open);
-
-  /* ---------- 빛줄기 (god rays) ---------- */
-  float ang = atan(p.y - sun.y, p.x - sun.x);
-  float rays = pow(max(0.0, sin(ang * 11.0 + fbm(vec2(ang * 3.0, uTime * 0.05)) * 4.0)), 3.0);
-  rays *= exp(-sd * 1.3) * smoothstep(0.1, 0.55, uv.y);
-  col += vec3(1.0, 0.78, 0.50) * rays * open * open * 0.22;
-
-  /* ---------- 떠다니는 빛 입자 (반딧불 같은 먼지) ---------- */
-  for (int i = 0; i < 10; i++) {
+  /* ---------- 아주 작은 부유 입자 — 티끌처럼 ---------- */
+  for (int i = 0; i < 6; i++) {
     float fi = float(i);
-    float r1 = hash11(fi * 3.7 + 1.0);
-    float r2 = hash11(fi * 9.1 + 2.0);
+    float r1 = hash21(vec2(fi, 1.7));
+    float r2 = hash21(vec2(fi, 9.2));
     vec2 mp = vec2(
-      fract(r1 + uTime * (0.006 + r2 * 0.010)) * aspect,
-      0.08 + 0.55 * fract(r2 + uTime * (0.008 + r1 * 0.014))
+      fract(r1 + uTime * (0.004 + r2 * 0.007)) * aspect,
+      0.10 + 0.45 * fract(r2 + uTime * (0.006 + r1 * 0.009))
     );
     float md = distance(p, mp);
-    float tw = 0.5 + 0.5 * sin(uTime * (1.0 + r1 * 3.0) + fi * 7.0);
-    col += vec3(1.0, 0.85, 0.55) * exp(-md * md * 2200.0) * tw * open * 0.55;
+    float tw = 0.5 + 0.5 * sin(uTime * (0.8 + r1 * 2.0) + fi * 7.0);
+    col += vec3(1.0, 0.82, 0.55) * exp(-md * md * 9000.0) * tw * open * 0.22;
   }
 
-  /* ---------- 비네트 & 그레인 ---------- */
-  float vig = smoothstep(1.35, 0.35, distance(uv, vec2(0.5)));
-  col *= mix(0.72, 1.0, vig);
-  col += (hash21(uv * uRes + uTime) - 0.5) * 0.018;
-
-  /* 톤 정리 */
-  col = pow(max(col, 0.0), vec3(0.92));
+  /* ---------- 톤 정리 ---------- */
+  float vig = smoothstep(1.45, 0.42, distance(uv, vec2(0.5, 0.46)));
+  col *= mix(0.80, 1.0, vig);
+  col = mix(col, col * col * (3.0 - 2.0 * col), 0.30);   /* 부드러운 대비 */
+  col = pow(max(col, 0.0), vec3(0.94));
+  col += (hash21(uv * uRes + fract(uTime) * 7.0) - 0.5) * 0.014;  /* 필름 그레인 */
 
   gl_FragColor = vec4(col, 1.0);
 }
@@ -299,10 +286,10 @@ const state = {
   hx: 0.5,  hy: 0.45,            // (b) 손 위치 → 안개 갈라짐
   hxT: 0.5, hyT: 0.45,
   handOn: 0, handOnTarget: 0,
-  usingHand: false,              // 손 인식이 활성인가 (마우스 폴백과 구분)
+  usingHand: false,
 };
 
-/* ── 마우스/터치 폴백: 손 인식 전에도 체험 가능 ── */
+/* ── 마우스/터치 폴백 ── */
 let mouseDown = false;
 addEventListener('pointermove', e => {
   if (state.usingHand) return;
@@ -350,7 +337,7 @@ async function initHands() {
   } catch (err) {
     console.warn('hand tracking unavailable:', err);
     video.classList.add('hidden');
-    chip.textContent = '카메라 없이 체험 중 — 마우스를 움직이고, 누르고 있으면 아침이 옵니다';
+    chip.textContent = '마우스를 움직이고, 누르고 있으면 아침이 옵니다';
   }
 }
 
@@ -366,15 +353,15 @@ function detectLoop() {
         state.usingHand = true;
         state.handOnTarget = 1;
 
-        /* (a) 손 펼침 정도: 손가락 끝~손목 거리를 손 크기로 정규화 */
-        const size = dist(lm[0], lm[9]) + 1e-6;      // 손목~중지 뿌리
+        /* (a) 손 펼침 정도 */
+        const size = dist(lm[0], lm[9]) + 1e-6;
         const tips = [8, 12, 16, 20];
         let ext = 0;
         for (const t of tips) ext += dist(lm[t], lm[0]) / size;
-        ext /= tips.length;                           // 주먹 ≈ 1.1, 활짝 ≈ 2.0
+        ext /= tips.length;
         state.openTarget = Math.min(1, Math.max(0, (ext - 1.2) / 0.75));
 
-        /* (b) 손바닥 중심 위치 (셀피 미러링 + y축 반전) */
+        /* (b) 손바닥 중심 위치 */
         const c = [0, 5, 9, 13, 17].reduce(
           (acc, i) => ({ x: acc.x + lm[i].x / 5, y: acc.y + lm[i].y / 5 }),
           { x: 0, y: 0 }
@@ -407,14 +394,13 @@ const lerp = (a, b, t) => a + (b - a) * t;
 const t0 = performance.now();
 
 function frame() {
-  /* 마우스 폴백: 버튼을 누르고 있으면 서서히 아침 */
   if (!state.usingHand)
     state.openTarget = mouseDown ? 1 : 0;
 
-  state.open   = lerp(state.open,   state.openTarget,   state.usingHand ? 0.10 : 0.035);
-  state.hx     = lerp(state.hx,     state.hxT,     0.16);
-  state.hy     = lerp(state.hy,     state.hyT,     0.16);
-  state.handOn = lerp(state.handOn, state.handOnTarget, 0.08);
+  state.open   = lerp(state.open,   state.openTarget,   state.usingHand ? 0.08 : 0.03);
+  state.hx     = lerp(state.hx,     state.hxT,     0.14);
+  state.hy     = lerp(state.hy,     state.hyT,     0.14);
+  state.handOn = lerp(state.handOn, state.handOnTarget, 0.07);
 
   gl.uniform2f(U.uRes, canvas.width, canvas.height);
   gl.uniform1f(U.uTime, (performance.now() - t0) / 1000);
@@ -423,12 +409,11 @@ function frame() {
   gl.uniform1f(U.uHandOn, state.handOn);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
 
-  /* 타이틀도 여명과 함께 깨어난다 */
+  /* 타이틀도 여명과 함께 깨어난다 — 절제된 변화만 */
   const o = state.open;
-  title.style.opacity = 0.45 + o * 0.55;
-  title.style.textShadow = `0 0 ${20 + o * 50}px rgba(255,200,140,${o * 0.55})`;
-  title.style.letterSpacing = `${0.35 + o * 0.12}em`;
-  subtitle.style.opacity = 0.35 * (1 - o * 0.85);
+  title.style.opacity = 0.42 + o * 0.5;
+  title.style.textShadow = `0 0 ${30 + o * 40}px rgba(255,190,130,${o * 0.35})`;
+  subtitle.style.opacity = 0.3 * (1 - o * 0.8);
 
   requestAnimationFrame(frame);
 }
