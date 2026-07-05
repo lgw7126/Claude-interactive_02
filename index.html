@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>새벽, 숲 — 손끝으로 깨우는 아침</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #04090b; }
+  #gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+  /* ── 타이틀 오버레이 ─────────────────────────── */
+  .overlay {
+    position: fixed; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; pointer-events: none;
+    color: #e8e2d6; text-align: center; z-index: 10;
+  }
+  h1 {
+    font-family: 'Noto Serif KR', Georgia, serif; font-weight: 300;
+    font-size: clamp(2.2rem, 6vw, 4.5rem);
+    letter-spacing: 0.35em; text-indent: 0.35em;
+    opacity: 0.55;
+    text-shadow: 0 0 30px rgba(255, 200, 140, 0);
+    transition: none; /* JS가 매 프레임 제어 */
+  }
+  .sub {
+    margin-top: 1.2rem; font-family: 'Noto Serif KR', Georgia, serif;
+    font-size: clamp(0.8rem, 1.6vw, 1rem); letter-spacing: 0.45em; text-indent: 0.45em;
+    opacity: 0.35; font-weight: 300;
+  }
+
+  /* ── 상태 칩 & 힌트 ─────────────────────────── */
+  .chip {
+    position: fixed; top: 1.2rem; left: 50%; transform: translateX(-50%);
+    padding: 0.45rem 1.1rem; border-radius: 999px; z-index: 20;
+    background: rgba(10, 20, 24, 0.55); backdrop-filter: blur(8px);
+    border: 1px solid rgba(232, 226, 214, 0.12);
+    color: rgba(232, 226, 214, 0.75);
+    font-family: system-ui, sans-serif; font-size: 0.78rem; letter-spacing: 0.05em;
+    transition: opacity 0.6s;
+  }
+  .hint {
+    position: fixed; bottom: 1.4rem; left: 50%; transform: translateX(-50%);
+    color: rgba(232, 226, 214, 0.45); z-index: 20;
+    font-family: system-ui, sans-serif; font-size: 0.75rem; letter-spacing: 0.08em;
+    text-align: center; line-height: 1.7;
+    transition: opacity 1s;
+  }
+
+  /* ── 웹캠 미리보기 ─────────────────────────── */
+  #cam {
+    position: fixed; right: 1rem; bottom: 1rem; width: 130px; z-index: 20;
+    border-radius: 10px; transform: scaleX(-1);
+    opacity: 0.5; border: 1px solid rgba(232,226,214,0.15);
+    transition: opacity 0.3s;
+  }
+  #cam:hover { opacity: 0.9; }
+  #cam.hidden { display: none; }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+
+<div class="overlay">
+  <h1 id="title">새벽, 숲</h1>
+  <div class="sub" id="subtitle">손을 펼치면 아침이 옵니다</div>
+</div>
+
+<div class="chip" id="chip">카메라를 준비하는 중…</div>
+<div class="hint" id="hint">
+  주먹을 쥐면 안개 짙은 밤 · 손을 펼치면 빛이 스며듭니다<br>
+  손을 움직이면 그 자리의 안개가 갈라집니다
+</div>
+<video id="cam" autoplay playsinline muted></video>
+
+<script type="module">
+/* ============================================================
+   1. WebGL — 새벽숲 + 볼류메트릭 안개 실시간 렌더링
+   ============================================================ */
+const canvas = document.getElementById('gl');
+const gl = canvas.getContext('webgl', { antialias: false });
+
+const VERT = `
+attribute vec2 aPos;
+void main() { gl_Position = vec4(aPos, 0.0, 1.0); }
+`;
+
+const FRAG = `
+precision highp float;
+uniform vec2  uRes;
+uniform float uTime;
+uniform float uOpen;    // 손 펼침 0(주먹)~1(활짝)
+uniform vec2  uHand;    // 손 위치 (0~1, 좌하단 원점)
+uniform float uHandOn;  // 손 감지 여부 0~1
+
+/* ---------- noise ---------- */
+float hash11(float n) { return fract(sin(n) * 43758.5453123); }
+float hash21(vec2 p)  { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
+
+float noise(vec2 p) {
+  vec2 i = floor(p), f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  float a = hash21(i);
+  float b = hash21(i + vec2(1.0, 0.0));
+  float c = hash21(i + vec2(0.0, 1.0));
+  float d = hash21(i + vec2(1.0, 1.0));
+  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+float fbm(vec2 p) {
+  float v = 0.0, a = 0.5;
+  for (int i = 0; i < 5; i++) {
+    v += a * noise(p);
+    p = p * 2.03 + vec2(17.3, 9.1);
+    a *= 0.5;
+  }
+  return v;
+}
+
+/* ---------- 침엽수 능선 ---------- */
+float treeline(float x, float seed) {
+  float t = x * 3.0 + seed;
+  float id = floor(t);
+  float f = fract(t);
+  float peak = 0.35 + 0.65 * hash11(id * 7.31 + seed);
+  float tri = (1.0 - abs(f * 2.0 - 1.0)) * peak;      // 뾰족한 나무 꼭대기
+  float n = fbm(vec2(x * 2.2, seed * 3.7)) * 0.55;    // 능선의 완만한 굴곡
+  return tri * 0.45 + n;
+}
+
+void main() {
+  vec2 uv = gl_FragCoord.xy / uRes;
+  float aspect = uRes.x / uRes.y;
+  vec2 p  = vec2(uv.x * aspect, uv.y);
+  vec2 hp = vec2(uHand.x * aspect, uHand.y);
+
+  float open = uOpen;
+
+  /* ---------- 손 주변 안개 갈라짐 ---------- */
+  float hd   = distance(p, hp);
+  float part = uHandOn * smoothstep(0.42, 0.04, hd);
+  vec2 pushDir = (hd > 0.001) ? (p - hp) / hd : vec2(0.0, 1.0);
+  vec2 fogPush = pushDir * part * 0.28;   // 안개 노이즈 좌표를 바깥으로 밀어냄
+
+  /* ---------- 하늘 ---------- */
+  vec3 nightLo = vec3(0.015, 0.045, 0.060);
+  vec3 nightHi = vec3(0.040, 0.085, 0.110);
+  vec3 dawnLo  = vec3(0.58, 0.34, 0.16);
+  vec3 dawnHi  = vec3(0.10, 0.17, 0.22);
+  vec3 sky = mix(
+    mix(nightLo, nightHi, uv.y),
+    mix(dawnLo,  dawnHi,  smoothstep(0.0, 0.85, uv.y)),
+    open
+  );
+
+  /* 태양(여명) — 지평선 부근에서 떠오름 */
+  vec2 sun = vec2(0.5 * aspect, 0.24 + 0.06 * open);
+  float sd = distance(p, sun);
+  sky += vec3(1.00, 0.70, 0.40) * open * 0.65 * exp(-sd * sd * 7.0);
+  sky += vec3(1.00, 0.84, 0.58) * open * 0.20 * exp(-sd * 2.0);
+
+  /* 별 — 어두울수록 또렷 */
+  float star = step(0.9985, hash21(floor(p * 220.0)));
+  star *= smoothstep(0.45, 0.85, uv.y) * (1.0 - open);
+  star *= 0.6 + 0.4 * sin(uTime * 2.0 + hash21(floor(p * 220.0)) * 40.0);
+  sky += vec3(0.8, 0.9, 1.0) * star * 0.5;
+
+  vec3 col = sky;
+
+  /* ---------- 숲 실루엣 4겹 (뒤 → 앞) ---------- */
+  for (int i = 0; i < 4; i++) {
+    float fi = float(i);
+    float depth   = fi / 3.0;                         // 0 = 가장 멀리
+    float base    = mix(0.46, 0.10, depth);           // 능선 기준 높이
+    float amp     = mix(0.10, 0.22, depth);
+    float xscale  = mix(1.1, 2.4, depth);
+    float seed    = fi * 19.7 + 5.0;
+    float drift   = uTime * 0.004 * depth;            // 앞 숲만 미세하게 흔들림
+
+    float h = base + amp * treeline(p.x * xscale + drift, seed);
+    float m = smoothstep(h + 0.003, h - 0.003, uv.y);
+
+    /* 먼 숲은 대기에 묻히고, 가까운 숲은 짙은 실루엣 */
+    vec3 silCol = mix(vec3(0.012, 0.028, 0.030), vec3(0.006, 0.014, 0.016), depth);
+    /* 여명이 오면 먼 능선에 따뜻한 기운 */
+    silCol += vec3(0.30, 0.16, 0.06) * open * (1.0 - depth) * 0.35
+              * exp(-abs(uv.y - h) * 14.0);
+
+    /* 층 사이 대기 안개 (멀수록 짙게, 주먹 쥘수록 짙게) */
+    float atmo = (1.0 - depth) * mix(0.72, 0.28, open);
+    vec3 atmoCol = mix(vec3(0.16, 0.21, 0.24), vec3(0.72, 0.55, 0.38), open * 0.6);
+    silCol = mix(silCol, atmoCol, atmo);
+
+    col = mix(col, silCol, m);
+  }
+
+  /* ---------- 피어오르는 볼류메트릭 안개 2겹 ---------- */
+  /* 손 위치에서는 노이즈 좌표가 밀려나 안개가 갈라진다 */
+  vec2 fp = p + fogPush;
+
+  float fogA = fbm(vec2(fp.x * 1.7 + uTime * 0.030, fp.y * 2.6 - uTime * 0.060));
+  float fogB = fbm(vec2(fp.x * 3.1 - uTime * 0.018, fp.y * 4.2 - uTime * 0.105));
+  float fog = fogA * 0.65 + fogB * 0.45;
+
+  /* 아래쪽이 짙은 수직 프로파일 */
+  float vprof = smoothstep(1.0, 0.05, uv.y);
+  fog *= vprof;
+
+  /* 주먹 = 자욱, 펼침 = 옅어지되 빛을 머금음 */
+  float density = mix(1.15, 0.45, open);
+  fog = smoothstep(0.25, 0.95, fog * density);
+
+  /* 손 주변은 안개가 걷힘 */
+  fog *= 1.0 - 0.92 * part;
+
+  /* 안개 색 — 밤에는 차가운 청회색, 여명에는 태양빛을 머금은 금빛 */
+  float sunGlow = exp(-sd * 1.6);
+  vec3 fogNight = vec3(0.30, 0.38, 0.44) * 0.55;
+  vec3 fogDawn  = mix(vec3(0.55, 0.58, 0.60), vec3(1.0, 0.80, 0.55), sunGlow);
+  vec3 fogCol = mix(fogNight, fogDawn, open);
+
+  col = mix(col, fogCol, fog * 0.85);
+
+  /* ---------- 갈라진 가장자리의 은은한 빛테두리 ---------- */
+  float rim = part * (1.0 - part) * 4.0;
+  col += vec3(0.45, 0.55, 0.60) * rim * 0.10 * (0.4 + 0.6 * open);
+
+  /* ---------- 빛줄기 (god rays) ---------- */
+  float ang = atan(p.y - sun.y, p.x - sun.x);
+  float rays = pow(max(0.0, sin(ang * 11.0 + fbm(vec2(ang * 3.0, uTime * 0.05)) * 4.0)), 3.0);
+  rays *= exp(-sd * 1.3) * smoothstep(0.1, 0.55, uv.y);
+  col += vec3(1.0, 0.78, 0.50) * rays * open * open * 0.22;
+
+  /* ---------- 떠다니는 빛 입자 (반딧불 같은 먼지) ---------- */
+  for (int i = 0; i < 10; i++) {
+    float fi = float(i);
+    float r1 = hash11(fi * 3.7 + 1.0);
+    float r2 = hash11(fi * 9.1 + 2.0);
+    vec2 mp = vec2(
+      fract(r1 + uTime * (0.006 + r2 * 0.010)) * aspect,
+      0.08 + 0.55 * fract(r2 + uTime * (0.008 + r1 * 0.014))
+    );
+    float md = distance(p, mp);
+    float tw = 0.5 + 0.5 * sin(uTime * (1.0 + r1 * 3.0) + fi * 7.0);
+    col += vec3(1.0, 0.85, 0.55) * exp(-md * md * 2200.0) * tw * open * 0.55;
+  }
+
+  /* ---------- 비네트 & 그레인 ---------- */
+  float vig = smoothstep(1.35, 0.35, distance(uv, vec2(0.5)));
+  col *= mix(0.72, 1.0, vig);
+  col += (hash21(uv * uRes + uTime) - 0.5) * 0.018;
+
+  /* 톤 정리 */
+  col = pow(max(col, 0.0), vec3(0.92));
+
+  gl_FragColor = vec4(col, 1.0);
+}
+`;
+
+function compile(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS))
+    throw new Error(gl.getShaderInfoLog(s));
+  return s;
+}
+const prog = gl.createProgram();
+gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERT));
+gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FRAG));
+gl.linkProgram(prog);
+gl.useProgram(prog);
+
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+const aPos = gl.getAttribLocation(prog, 'aPos');
+gl.enableVertexAttribArray(aPos);
+gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+const U = {};
+for (const n of ['uRes', 'uTime', 'uOpen', 'uHand', 'uHandOn'])
+  U[n] = gl.getUniformLocation(prog, n);
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 1.75);
+  canvas.width  = Math.floor(innerWidth  * dpr);
+  canvas.height = Math.floor(innerHeight * dpr);
+  gl.viewport(0, 0, canvas.width, canvas.height);
+}
+addEventListener('resize', resize);
+resize();
+
+/* ============================================================
+   2. 인터랙션 상태 — 목표값을 두고 매 프레임 부드럽게 보간
+   ============================================================ */
+const state = {
+  open: 0,  openTarget: 0,       // (a) 손 펼침 → 안개·빛
+  hx: 0.5,  hy: 0.45,            // (b) 손 위치 → 안개 갈라짐
+  hxT: 0.5, hyT: 0.45,
+  handOn: 0, handOnTarget: 0,
+  usingHand: false,              // 손 인식이 활성인가 (마우스 폴백과 구분)
+};
+
+/* ── 마우스/터치 폴백: 손 인식 전에도 체험 가능 ── */
+let mouseDown = false;
+addEventListener('pointermove', e => {
+  if (state.usingHand) return;
+  state.hxT = e.clientX / innerWidth;
+  state.hyT = 1 - e.clientY / innerHeight;
+  state.handOnTarget = 1;
+});
+addEventListener('pointerdown', () => { mouseDown = true; });
+addEventListener('pointerup',   () => { mouseDown = false; });
+
+/* ============================================================
+   3. MediaPipe 손 인식
+   ============================================================ */
+const chip = document.getElementById('chip');
+const hint = document.getElementById('hint');
+const video = document.getElementById('cam');
+let landmarker = null;
+let lastSeen = 0;
+
+async function initHands() {
+  try {
+    const { FilesetResolver, HandLandmarker } = await import(
+      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14'
+    );
+    const files = await FilesetResolver.forVisionTasks(
+      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
+    );
+    landmarker = await HandLandmarker.createFromOptions(files, {
+      baseOptions: {
+        modelAssetPath:
+          'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
+        delegate: 'GPU',
+      },
+      runningMode: 'VIDEO',
+      numHands: 1,
+    });
+
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: 640, height: 480, facingMode: 'user' },
+    });
+    video.srcObject = stream;
+    await video.play();
+    chip.textContent = '카메라 앞에 손을 보여주세요';
+    detectLoop();
+  } catch (err) {
+    console.warn('hand tracking unavailable:', err);
+    video.classList.add('hidden');
+    chip.textContent = '카메라 없이 체험 중 — 마우스를 움직이고, 누르고 있으면 아침이 옵니다';
+  }
+}
+
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+function detectLoop() {
+  const tick = () => {
+    if (video.readyState >= 2) {
+      const res = landmarker.detectForVideo(video, performance.now());
+      if (res.landmarks && res.landmarks.length > 0) {
+        const lm = res.landmarks[0];
+        lastSeen = performance.now();
+        state.usingHand = true;
+        state.handOnTarget = 1;
+
+        /* (a) 손 펼침 정도: 손가락 끝~손목 거리를 손 크기로 정규화 */
+        const size = dist(lm[0], lm[9]) + 1e-6;      // 손목~중지 뿌리
+        const tips = [8, 12, 16, 20];
+        let ext = 0;
+        for (const t of tips) ext += dist(lm[t], lm[0]) / size;
+        ext /= tips.length;                           // 주먹 ≈ 1.1, 활짝 ≈ 2.0
+        state.openTarget = Math.min(1, Math.max(0, (ext - 1.2) / 0.75));
+
+        /* (b) 손바닥 중심 위치 (셀피 미러링 + y축 반전) */
+        const c = [0, 5, 9, 13, 17].reduce(
+          (acc, i) => ({ x: acc.x + lm[i].x / 5, y: acc.y + lm[i].y / 5 }),
+          { x: 0, y: 0 }
+        );
+        state.hxT = 1 - c.x;
+        state.hyT = 1 - c.y;
+
+        chip.style.opacity = '0';
+        hint.style.opacity = '0';
+      } else if (performance.now() - lastSeen > 800) {
+        state.usingHand = false;
+        state.handOnTarget = 0;
+        chip.style.opacity = '1';
+        hint.style.opacity = '1';
+        chip.textContent = '카메라 앞에 손을 보여주세요';
+      }
+    }
+    requestAnimationFrame(tick);
+  };
+  tick();
+}
+initHands();
+
+/* ============================================================
+   4. 렌더 루프
+   ============================================================ */
+const title = document.getElementById('title');
+const subtitle = document.getElementById('subtitle');
+const lerp = (a, b, t) => a + (b - a) * t;
+const t0 = performance.now();
+
+function frame() {
+  /* 마우스 폴백: 버튼을 누르고 있으면 서서히 아침 */
+  if (!state.usingHand)
+    state.openTarget = mouseDown ? 1 : 0;
+
+  state.open   = lerp(state.open,   state.openTarget,   state.usingHand ? 0.10 : 0.035);
+  state.hx     = lerp(state.hx,     state.hxT,     0.16);
+  state.hy     = lerp(state.hy,     state.hyT,     0.16);
+  state.handOn = lerp(state.handOn, state.handOnTarget, 0.08);
+
+  gl.uniform2f(U.uRes, canvas.width, canvas.height);
+  gl.uniform1f(U.uTime, (performance.now() - t0) / 1000);
+  gl.uniform1f(U.uOpen, state.open);
+  gl.uniform2f(U.uHand, state.hx, state.hy);
+  gl.uniform1f(U.uHandOn, state.handOn);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  /* 타이틀도 여명과 함께 깨어난다 */
+  const o = state.open;
+  title.style.opacity = 0.45 + o * 0.55;
+  title.style.textShadow = `0 0 ${20 + o * 50}px rgba(255,200,140,${o * 0.55})`;
+  title.style.letterSpacing = `${0.35 + o * 0.12}em`;
+  subtitle.style.opacity = 0.35 * (1 - o * 0.85);
+
+  requestAnimationFrame(frame);
+}
+frame();
+</script>
+</body>
+</html>
