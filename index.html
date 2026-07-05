@@ -202,7 +202,7 @@ void main() {
     float band = exp(-max(0.0, uv.y - h) * mix(14.0, 26.0, t));
     vec2 bp = p + fogPush;
     float bn = fbm(vec2(bp.x * 2.1 + uTime * 0.020 * (0.5 + t),
-                        bp.y * 3.2 - uTime * 0.024));
+                        bp.y * 3.2 - uTime * 0.055));
     float bm = band * smoothstep(0.36, 0.72, bn)
              * mix(0.34, 0.14, t) * mix(1.0, 0.42, open);
     bm *= 1.0 - 0.90 * part;
@@ -216,12 +216,24 @@ void main() {
     fbm(fp * 1.35 + vec2(5.2, uTime * 0.017))
   );
   float mist = fbm(fp * vec2(1.5, 2.7) + q * 1.35
-                   + vec2(uTime * 0.022, -uTime * 0.030));
+                   + vec2(uTime * 0.022, -uTime * 0.062));
   mist *= smoothstep(0.92, 0.06, uv.y);
   float density = mix(0.92, 0.40, open);
   mist = smoothstep(0.34, 0.92, mist * density + 0.10);
   mist *= 1.0 - 0.93 * part;
   col = mix(col, hazeCol, mist * 0.52);
+
+  /* ---------- 피어오르는 안개 기둥 — 골짜기에서 위로 솟는 결 ---------- */
+  vec2 wp = fp * vec2(2.4, 1.0);
+  vec2 wq = vec2(
+    fbm(wp * 0.9 + vec2(uTime * 0.020, -uTime * 0.085)),
+    fbm(wp * 0.9 + vec2(7.7, -uTime * 0.110))
+  );
+  float wisp = fbm(wp + wq * 1.7 + vec2(uTime * 0.012, -uTime * 0.150));
+  wisp = smoothstep(0.46, 0.88, wisp * mix(1.10, 0.80, open));
+  wisp *= smoothstep(0.92, 0.12, uv.y);          /* 위로 갈수록 흩어져 사라짐 */
+  wisp *= 1.0 - 0.93 * part;
+  col = mix(col, hazeCol * 1.05, wisp * 0.34);
 
   /* 안개 속으로 번지는 여명의 산란광 */
   col += vec3(1.0, 0.64, 0.36) * open * exp(-sd * 1.9) * (mist * 0.55 + 0.10);
